@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Email Templates</title>
+
+  <!-- Office.js — required for all Outlook add-ins -->
+  <script src="https://appsforoffice.microsoft.com/lib/1.1/hosted/office.js"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      font-size: 13px;
+      color: #323130;
+      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      padding: 12px 14px;
+      background: #f3f2f1;
+      border-bottom: 1px solid #edebe9;
+      flex-shrink: 0;
+    }
+    .header h1 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #323130;
+    }
+
+    /* ── Search box ── */
+    .search-wrap {
+      padding: 10px 14px;
+      border-bottom: 1px solid #edebe9;
+      flex-shrink: 0;
+    }
+    .search-wrap input {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid #8a8886;
+      border-radius: 2px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      color: #323130;
+    }
+    .search-wrap input:focus {
+      border-color: #0078d4;
+      box-shadow: 0 0 0 1px #0078d4;
+    }
+
+    /* ── Template list ── */
+    .template-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+
+    .template-item {
+      padding: 10px 14px 12px;
+      border-bottom: 1px solid #f3f2f1;
+    }
+    .template-item:hover {
+      background: #f3f2f1;
+    }
+    .template-item:hover .insert-btn {
+      opacity: 1;
+    }
+
+    .template-title {
+      font-weight: 600;
+      font-size: 13px;
+      color: #323130;
+      margin-bottom: 3px;
+    }
+    .template-preview {
+      font-size: 11px;
+      color: #605e5c;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 8px;
+    }
+    .insert-btn {
+      padding: 4px 14px;
+      background: #0078d4;
+      color: #fff;
+      border: none;
+      border-radius: 2px;
+      font-size: 12px;
+      font-family: inherit;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.15s, background 0.15s;
+    }
+    .insert-btn:hover {
+      background: #106ebe;
+    }
+
+    /* ── States ── */
+    .state-msg {
+      padding: 24px 14px;
+      text-align: center;
+      color: #605e5c;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .state-msg.error { color: #a4262c; }
+
+    /* ── Status bar ── */
+    .status-bar {
+      padding: 7px 14px;
+      font-size: 11px;
+      border-top: 1px solid #edebe9;
+      min-height: 30px;
+      color: #605e5c;
+      flex-shrink: 0;
+    }
+    .status-bar.success { color: #107c10; font-weight: 600; }
+    .status-bar.error   { color: #a4262c; font-weight: 600; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>Email Templates</h1>
+  </div>
+
+  <div class="search-wrap">
+    <input type="text" id="searchBox" placeholder="Search templates…" oninput="filterTemplates()" />
+  </div>
+
+  <div class="template-list" id="templateList">
+    <div class="state-msg">Loading templates…</div>
+  </div>
+
+  <div class="status-bar" id="statusBar"></div>
+
+
+  <script>
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CONFIGURATION — update these two values before uploading to SharePoint
+    // ─────────────────────────────────────────────────────────────────────────
+    const CONFIG = {
+      siteUrl:  "https://australianpayments.sharepoint.com/sites/APN-TST-Test",  // ← your SharePoint site URL
+      listName: "EmailTemplates"                                            // ← your SharePoint list name
+    };
+    // ─────────────────────────────────────────────────────────────────────────
+
+
+    let allTemplates     = [];
+    let filteredTemplates = [];
+
+
+    // Wait for Office.js to be ready before doing anything
+    Office.onReady(function () {
+      loadTemplates();
+    });
+
+
+    // Fetch templates from SharePoint list
+    async function loadTemplates() {
+      try {
+        const apiUrl =
+          `${CONFIG.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(CONFIG.listName)}')/items` +
+          `?$select=Title,TemplateBody&$orderby=Title&$top=500`;
+
+        const response = await fetch(apiUrl, {
+          headers: { "Accept": "application/json;odata=nometadata" },
+          credentials: "include"   // sends the user's existing SharePoint session cookie
+        });
+
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}. Check the site URL and list name in CONFIG.`);
+        }
+
+        const data = await response.json();
+        allTemplates = data.value || [];
+        filterTemplates(); // render immediately
+
+      } catch (err) {
+        document.getElementById("templateList").innerHTML =
+          `<div class="state-msg error">
+            Could not load templates.<br/>
+            <small>${escapeHtml(err.message)}</small><br/><br/>
+            <small>Contact IT if this persists.</small>
+          </div>`;
+      }
+    }
+
+
+    // Filter templates based on search box, then render
+    function filterTemplates() {
+      const query = document.getElementById("searchBox").value.toLowerCase().trim();
+
+      filteredTemplates = query
+        ? allTemplates.filter(t =>
+            t.Title.toLowerCase().includes(query) ||
+            (t.TemplateBody || "").toLowerCase().includes(query)
+          )
+        : allTemplates;
+
+      renderTemplates();
+    }
+
+
+    // Render the current filteredTemplates array into the list
+    function renderTemplates() {
+      const listEl = document.getElementById("templateList");
+
+      if (filteredTemplates.length === 0) {
+        listEl.innerHTML = allTemplates.length === 0
+          ? `<div class="state-msg">No templates have been added yet.</div>`
+          : `<div class="state-msg">No templates match your search.</div>`;
+        return;
+      }
+
+      listEl.innerHTML = filteredTemplates.map((t, index) => {
+        const preview = (t.TemplateBody || "").replace(/\n/g, " ").substring(0, 110);
+        return `
+          <div class="template-item">
+            <div class="template-title">${escapeHtml(t.Title)}</div>
+            <div class="template-preview">${escapeHtml(preview)}…</div>
+            <button class="insert-btn" onclick="insertTemplate(${index})">Insert</button>
+          </div>`;
+      }).join("");
+    }
+
+
+    // Insert the selected template into the active email compose window
+    function insertTemplate(index) {
+      const template = filteredTemplates[index];
+      if (!template) return;
+
+      const statusEl = document.getElementById("statusBar");
+
+      Office.context.mailbox.item.body.setSelectedDataAsync(
+        template.TemplateBody || "",
+        { coercionType: Office.CoercionType.Text },
+        function (result) {
+          if (result.status === Office.AsyncResultStatus.Succeeded) {
+            statusEl.textContent = "✓ Template inserted.";
+            statusEl.className  = "status-bar success";
+          } else {
+            statusEl.textContent = "✗ Insert failed — please try again.";
+            statusEl.className  = "status-bar error";
+          }
+          // Clear status after 3 seconds
+          setTimeout(() => {
+            statusEl.textContent = "";
+            statusEl.className  = "status-bar";
+          }, 3000);
+        }
+      );
+    }
+
+
+    // Safely escape strings for HTML output
+    function escapeHtml(str) {
+      return (str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+  </script>
+</body>
+</html>
