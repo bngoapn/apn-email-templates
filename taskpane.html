@@ -39,7 +39,7 @@
     <div class="state-msg">Loading templates…</div>
   </div>
   <div class="status-bar" id="statusBar"></div>
-  <div class="version-footer">v1.0.0.3</div>
+  <div class="version-footer">v1.0.0.4</div>
 
   <script>
     const TEMPLATES_URL = "https://bngoapn.github.io/apn-email-templates/templates.json";
@@ -93,9 +93,13 @@
       const template = filteredTemplates[index];
       if (!template) return;
       const statusEl = document.getElementById("statusBar");
+
+      // Convert newlines to <br> tags for HTML insertion
+      const htmlBody = escapeHtml(template.body || "").replace(/\n/g, "<br>");
+
       Office.context.mailbox.item.body.setSelectedDataAsync(
-        template.body || "",
-        { coercionType: Office.CoercionType.Text },
+        htmlBody,
+        { coercionType: Office.CoercionType.Html },
         function (result) {
           if (result.status === Office.AsyncResultStatus.Succeeded) {
             statusEl.textContent = "✓ Template inserted.";
